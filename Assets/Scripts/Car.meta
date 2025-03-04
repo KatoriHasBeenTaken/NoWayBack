@@ -1,5 +1,9 @@
 fileFormatVersion: 2
+<<<<<<<< HEAD:Assets/Scripts/Car.meta
 guid: 1aee061786e8fa4468f617edabb4ffaa
+========
+guid: d43fc22cae340cd46a5e7bdd72971768
+>>>>>>>> main:Assets/Triangularity/ColorfulCity/Scenes.meta
 folderAsset: yes
 DefaultImporter:
   externalObjects: {}
