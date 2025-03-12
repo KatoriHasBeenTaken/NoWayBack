@@ -8,7 +8,7 @@ namespace Muryotaisu
     {
         private Animator animator;
 
-        public float speed = 2; // Walking speed
+        public float speed = 5; // Walking speed
         public float jumpSpeed = 2; // Jump speed
         public float gravity = 1; //gravity
 

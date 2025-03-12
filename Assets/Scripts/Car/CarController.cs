@@ -2,40 +2,37 @@
 
 public class CarController : MonoBehaviour
 {
-    public float acceleration = 3000f; // Lực tăng tốc hợp lý hơn
-    public float maxSpeed = 80f; // Tốc độ tối đa (thực tế hơn)
-    public float turnSpeed = 1.5f; // Giảm xoay để xe vào cua mượt
-    public float driftFactor = 0.95f; // Giữ độ bám đường khi drift nhẹ
-    public float brakingForce = 5000f; // Lực phanh vừa đủ để xe trượt nhẹ
+    public WheelCollider frontLeftWheel, frontRightWheel, rearLeftWheel, rearRightWheel;
+    public Transform frontLeftMesh, frontRightMesh, rearLeftMesh, rearRightMesh;
 
+    public float motorTorque = 150f; // Tăng lực truyền động
+    public float maxSteeringAngle = 30f; // Góc quay tối đa
+    public float brakingForce = 30f; // Giảm lực phanh
+    public float driftFactor = 0.6f; // Tăng hệ số drift
+    public float rearDriftDelay = 0.1f; // Giảm độ trễ khi drift bánh sau
+    public float dragFactor = 1.5f; // Giảm lực cản không khí
+    public float angularDragFactor = 1.8f; // Giảm xoay xe quá mức
+    public float engineBrakingForce = 70f; // Phanh động cơ khi buông ga
+    public float tiltAngleMax = 15f; // Tăng góc nghiêng tối đa khi vào cua
+    public float maxSpeed = 10f; // Tăng giới hạn tốc độ tối đa
+
+    private bool isDrifting = false;
     private Rigidbody rb;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
-        rb.centerOfMass = new Vector3(0, -0.8f, 0); // Trọng tâm thấp để xe ổn định
-        rb.drag = 0.5f; // Giá trị 0.5 giúp xe dừng dần tự nhiên hơn
+        rb.drag = dragFactor; // Cản không khí, giúp xe chậm lại tự nhiên
+        rb.angularDrag = angularDragFactor; // Giảm xoay quá mức
     }
 
     void FixedUpdate()
     {
-        float moveInput = Input.GetAxis("Vertical"); // W/S hoặc mũi tên lên/xuống
-        float turnInput = Input.GetAxis("Horizontal"); // A/D hoặc mũi tên trái/phải
+        float moveInput = Input.GetAxis("Vertical");   // W/S hoặc mũi tên lên/xuống
+        float steerInput = Input.GetAxis("Horizontal"); // A/D hoặc mũi tên trái/phải
 
-        // Nếu có đầu vào từ người chơi, tăng tốc
-        if (Mathf.Abs(moveInput) > 0.1f)
-        {
-            Vector3 forwardForce = transform.forward * moveInput * acceleration * Time.deltaTime;
-            if (rb.velocity.magnitude < maxSpeed)
-            {
-                rb.AddForce(forwardForce, ForceMode.Acceleration);
-            }
-        }
-        else
-        {
-            // Khi không có đầu vào, giảm tốc từ từ
-            rb.velocity *= 0.98f; // Giúp xe dừng lại tự nhiên hơn
-        }
+        // Kiểm tra nếu đang drift
+        isDrifting = Input.GetKey(KeyCode.Space);
 
         // Giới hạn tốc độ tối đa
         if (rb.velocity.magnitude > maxSpeed)
@@ -43,20 +40,71 @@ public class CarController : MonoBehaviour
             rb.velocity = rb.velocity.normalized * maxSpeed;
         }
 
-        // Quay xe chỉ khi đang di chuyển
-        if (Mathf.Abs(moveInput) > 0.1f)
+        // Truyền lực vào bánh sau
+        float currentMotorTorque = isDrifting ? motorTorque * 0.7f : motorTorque;
+        rearLeftWheel.motorTorque = moveInput * currentMotorTorque;
+        rearRightWheel.motorTorque = moveInput * currentMotorTorque;
+
+        // Điều khiển hướng bánh trước
+        float steerAngle = maxSteeringAngle * steerInput;
+        frontLeftWheel.steerAngle = steerAngle;
+        frontRightWheel.steerAngle = steerAngle;
+
+        // Phanh chỉ tác động lên bánh trước khi nhấn Space (giống GTA V)
+        if (isDrifting)
         {
-            rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, turnInput * turnSpeed * (rb.velocity.magnitude / maxSpeed), 0f));
+            frontLeftWheel.brakeTorque = brakingForce;
+            frontRightWheel.brakeTorque = brakingForce;
+            rearLeftWheel.brakeTorque = 0;
+            rearRightWheel.brakeTorque = 0;
+        }
+        else
+        {
+            frontLeftWheel.brakeTorque = 0;
+            frontRightWheel.brakeTorque = 0;
         }
 
-        // Áp dụng drift nhẹ
-        Vector3 driftForce = rb.velocity - transform.forward * Vector3.Dot(rb.velocity, transform.forward);
-        rb.velocity -= driftForce * (1 - driftFactor) * Time.deltaTime;
-
-        // Phanh trượt khi nhấn phím Space
-        if (Input.GetKey(KeyCode.Space))
+        // Phanh động cơ khi buông ga
+        if (moveInput == 0 && rb.velocity.magnitude > 0.1f)
         {
-            rb.AddForce(-rb.velocity.normalized * brakingForce * Time.deltaTime, ForceMode.Acceleration);
+            rearLeftWheel.brakeTorque = engineBrakingForce * 0.2f; // Tăng lực phanh động cơ để xe chậm lại nhanh hơn
+            rearRightWheel.brakeTorque = engineBrakingForce * 0.2f;
         }
+        else
+        {
+            rearLeftWheel.brakeTorque = 0;
+            rearRightWheel.brakeTorque = 0;
+        }
+
+        // Giảm ma sát ngang khi drift
+        AdjustDrift(rearLeftWheel, isDrifting);
+        AdjustDrift(rearRightWheel, isDrifting);
+
+        // Hiệu ứng nghiêng xe khi vào cua
+        float tiltAngle = Mathf.Lerp(0, tiltAngleMax, Mathf.Abs(steerInput));
+        Quaternion targetTilt = Quaternion.Euler(0, transform.rotation.eulerAngles.y, -steerInput * tiltAngle);
+        rb.MoveRotation(Quaternion.Slerp(rb.rotation, targetTilt, Time.deltaTime * 2f));
+
+        // Cập nhật vị trí và xoay của bánh xe
+        UpdateWheelPose(frontLeftWheel, frontLeftMesh);
+        UpdateWheelPose(frontRightWheel, frontRightMesh);
+        UpdateWheelPose(rearLeftWheel, rearLeftMesh);
+        UpdateWheelPose(rearRightWheel, rearRightMesh);
+    }
+
+    void UpdateWheelPose(WheelCollider collider, Transform mesh)
+    {
+        Vector3 pos;
+        Quaternion rot;
+        collider.GetWorldPose(out pos, out rot);
+        mesh.position = pos;
+        mesh.rotation = rot;
+    }
+
+    void AdjustDrift(WheelCollider wheel, bool drifting)
+    {
+        WheelFrictionCurve friction = wheel.sidewaysFriction;
+        friction.stiffness = drifting ? 0.3f : 1.0f; // Giảm độ cứng khi drift
+        wheel.sidewaysFriction = friction;
     }
 }
